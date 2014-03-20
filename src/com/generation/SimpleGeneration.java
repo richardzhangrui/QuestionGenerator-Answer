@@ -1,6 +1,5 @@
 package com.generation;
 
-import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.StringReader;
 import java.util.*;
@@ -11,10 +10,14 @@ import edu.stanford.nlp.parser.lexparser.LexicalizedParser;
 import edu.stanford.nlp.process.Morphology;
 import edu.stanford.nlp.process.PTBTokenizer;
 
+
+/**  
+ * TODO: Create classes (more OOP) 
+ **/
 class SimpleGeneration {
   public static void main(String[] args) {
     LexicalizedParser lp = LexicalizedParser.loadModel("edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz");
-    lp.setOptionFlags(new String[]{"-maxLength", "80", "-retainTmpSubcategories"});
+    lp.setOptionFlags(new String[]{"-maxLength", "200", "-retainTmpSubcategories"});
     
     System.out.println("Please input the sentence: ");
     
@@ -105,17 +108,15 @@ class SimpleGeneration {
 	    sb.append(sent.get(index).word().substring(1) + " ");
     }
     boolean isPeriod = false;
-    boolean isFirst = true;
     for (int i = 0; i < sent.size(); i++) {
     	if (i == index) {
     		continue;
     	}
     	
-    	/* TODO: Need to add checking whether it is a Proper Noun*/
-    	if (isFirst) {
+    	/* Need to check whether it is a Proper Noun */
+    	if (i == 0 && !parse.taggedLabeledYield().get(i).tag().equals("NNP") && !sent.get(i).word().equals("I")) {
     		sb.append(Character.toLowerCase((sent.get(i).word().charAt(0))));
     		sb.append(sent.get(i).word().substring(1) + " ");
-    		isFirst = false;
     		continue;
     	}
     	
