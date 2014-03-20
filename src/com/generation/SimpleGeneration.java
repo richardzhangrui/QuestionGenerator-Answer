@@ -14,7 +14,7 @@ import edu.stanford.nlp.process.PTBTokenizer;
 /**  
  * TODO: Create classes (more OOP) 
  * 		 Transform to 'NO' questions
- * 		 Negation sentence
+ * 		 Sentence compression
  **/
 class SimpleGeneration {
   public static void main(String[] args) {
