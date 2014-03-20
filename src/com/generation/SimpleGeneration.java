@@ -60,6 +60,7 @@ class SimpleGeneration {
     
       
     HashSet<String> relations = new HashSet<String>();
+    /* dependencies include is/are, were/was, can/have, etc. */
     relations.add("cop");
     relations.add("auxpass");
     relations.add("aux");
@@ -79,14 +80,17 @@ class SimpleGeneration {
     
     if (index == -1) {
     	CoreLabel lable = parse.taggedLabeledYield().get(root_index);
+        /* get the tag */
     	String tag = lable.tag();
     
     	WordTag wt = new WordTag(sent.get(root_index).word(),tag);
     	
+        /* get the original word */
     	WordLemmaTag ori_word = Morphology.lemmatizeStatic(wt);
     	
     	sent.get(root_index).setWord(ori_word.lemma());
     	
+        /* handle simple declarative sentences: add helper verbs according to verb tense */
     	if (tag.equals("VBD")) {
     		sb.append("Did ");
     	} else if (tag.equals("VBP")) {
