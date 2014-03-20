@@ -13,6 +13,7 @@ import edu.stanford.nlp.process.PTBTokenizer;
 
 /**  
  * TODO: Create classes (more OOP) 
+ * 		 Transform to 'NO' questions
  **/
 class SimpleGeneration {
   public static void main(String[] args) {
