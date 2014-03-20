@@ -14,6 +14,7 @@ import edu.stanford.nlp.process.PTBTokenizer;
 /**  
  * TODO: Create classes (more OOP) 
  * 		 Transform to 'NO' questions
+ * 		 Negation sentence
  **/
 class SimpleGeneration {
   public static void main(String[] args) {
@@ -102,11 +103,13 @@ class SimpleGeneration {
     	} else if (tag.equals("VBZ")) {
     		sb.append("Does ");
     	}
-    }
-    
-    if (index != -1) {
-		sb.append(Character.toUpperCase(sent.get(index).word().charAt(0)));
-	    sb.append(sent.get(index).word().substring(1) + " ");
+    } else if (index != -1) {
+    	String word = sent.get(index).word();
+    	if (tdl.get(index).reln().toString().equals("aux") && word.toLowerCase().equals("ca")) {
+    		word += "n";
+    	}
+		sb.append(Character.toUpperCase(word.charAt(0)));
+	    sb.append(word.substring(1) + " ");
     }
     boolean isPeriod = false;
     for (int i = 0; i < sent.size(); i++) {
@@ -126,7 +129,14 @@ class SimpleGeneration {
     		isPeriod = true;
     		continue;
     	}
-    	sb.append(sent.get(i).word()+" ");
+    	
+    	if (tdl.get(i).reln().toString().equals("neg")) {
+    		continue;
+    	}
+    	
+    	String word = sent.get(i).word();
+    	
+    	sb.append(word+" ");
     }    
     
     if (!isPeriod) {
