@@ -24,6 +24,7 @@
 
 package edu.cmu.ark;
 
+import edu.mit.jwi.item.POS;
 import edu.stanford.nlp.trees.*;
 import edu.stanford.nlp.util.*;
 
@@ -32,7 +33,7 @@ import java.util.regex.*;
 import java.io.*;
 import java.util.*;
 
-
+import edu.cmu.ark.TregexPatternFactory;
 import edu.stanford.nlp.trees.tregex.tsurgeon.*;
 import edu.stanford.nlp.trees.tregex.*;
 
@@ -50,6 +51,7 @@ public class QuestionTransducer {
 	public QuestionTransducer(){
 		whGen = new WhPhraseGenerator();
 		numWHPhrases = 0;
+		rand = new Random(Calendar.getInstance().getTimeInMillis());
 	}
 
 	
@@ -188,6 +190,7 @@ public class QuestionTransducer {
 		//either due to syntactic constraints or conservative restrictions
 		tmp1.setTree(markUnmovablePhrases(tmp1.getTree()));
 		tmp1.setTree(markPossibleAnswerPhrases(tmp1.getTree()));
+		
 		if(GlobalProperties.getDebug()) System.err.println("Number of Possible WH questions: "+numWHPhrases+"\n");
 		
 		//iterate over the possible answer phrases, generate
@@ -233,7 +236,56 @@ public class QuestionTransducer {
 				if(avoidPronounsAndDemonstratives && (containsUnresolvedPronounsOrDemonstratives(tmp2))){
 					if(GlobalProperties.getDebug()) System.err.println("generateQuestionsFromParse: skipping due to pronouns");
 				}else{
-					questions.add(tmp2);	
+					questions.add(tmp2);
+					/* replace with synonyms or antonyms */
+					if (replaceWords) {
+						Question tmp3 = tmp2.deeperCopy();
+						ArrayList<String> noun_trees = new ArrayList<String>();
+						ArrayList<String> jj_trees = new ArrayList<String>();
+						tmp3.setTree(markPossibleReplaceWords(tmp3.getTree(), noun_trees, jj_trees));
+						
+						StringBuffer n_buffer = new StringBuffer();
+						StringBuffer j_buffer = new StringBuffer();
+						for (String s : noun_trees) {
+							n_buffer.append(s + "|");
+						}
+						for (String s : jj_trees) {
+							j_buffer.append(s + "|");
+						}
+						
+						if (n_buffer.length() > 1) {
+							n_buffer.deleteCharAt(n_buffer.length() - 1);
+						}
+						if (j_buffer.length() > 1) {
+							j_buffer.deleteCharAt(j_buffer.length() - 1);
+						}
+						
+						if (!noun_trees.isEmpty() || !jj_trees.isEmpty()) {
+							for (int k = 0; k < num_replace; k++) {
+								
+								if (!noun_trees.isEmpty()) {
+								
+									List<Tree> trees = replace_word(0, noun_trees, tmp3.getTree());
+									//System.out.println(trees);
+									for (Tree tmp_t : trees) {
+										Question tmp_q = tmp3.deeperCopy();
+										tmp_q.setTree(remove_labels(tmp_t,n_buffer.toString(),j_buffer.toString()));
+										questions.add(tmp_q);
+									}
+								} 
+								if (!jj_trees.isEmpty()) {
+									List<Tree> trees = replace_word(2, jj_trees, tmp3.getTree());
+									System.out.println(trees);
+									for (Tree tmp_t : trees) {
+										Question tmp_q = tmp3.deeperCopy();
+										tmp_q.setTree(remove_labels(tmp_t,n_buffer.toString(),j_buffer.toString()));
+										questions.add(tmp_q);
+									}
+								} 
+								
+							}		
+						}
+					} 
 				}
 				
 				if(GlobalProperties.getDebug()) System.err.println();
@@ -259,6 +311,53 @@ public class QuestionTransducer {
 				if(GlobalProperties.getDebug()) System.err.println("generateQuestionsFromParse: skipping due to pronouns");
 			}else{
 				questions.add(tmp2);	
+				if (replaceWords) {
+					Question tmp3 = tmp2.deeperCopy();
+					ArrayList<String> noun_trees = new ArrayList<String>();
+					ArrayList<String> jj_trees = new ArrayList<String>();
+					tmp3.setTree(markPossibleReplaceWords(tmp3.getTree(), noun_trees, jj_trees));
+					
+					
+					StringBuffer n_buffer = new StringBuffer();
+					StringBuffer j_buffer = new StringBuffer();
+					for (String s : noun_trees) {
+						n_buffer.append(s + "|");
+					}
+					for (String s : jj_trees) {
+						j_buffer.append(s + "|");
+					}
+					
+					if (n_buffer.length() > 1) {
+						n_buffer.deleteCharAt(n_buffer.length() - 1);
+					}
+					if (j_buffer.length() > 1) {
+						j_buffer.deleteCharAt(j_buffer.length() - 1);
+					}
+					
+					if (!noun_trees.isEmpty() || !jj_trees.isEmpty()) {
+						for (int k = 0; k < num_replace; k++) {
+							
+							if (!noun_trees.isEmpty()) {
+							
+								List<Tree> trees = replace_word(0, noun_trees, tmp3.getTree());
+								for (Tree tmp_t : trees) {
+									Question tmp_q = tmp3.deeperCopy();
+									tmp_q.setTree(remove_labels(tmp_t,n_buffer.toString(),j_buffer.toString()));
+									questions.add(tmp_q);
+								}
+							} 
+							if (!jj_trees.isEmpty()) {
+								List<Tree> trees = replace_word(1, jj_trees, tmp3.getTree());
+								for (Tree tmp_t : trees) {
+									Question tmp_q = tmp3.deeperCopy();
+									tmp_q.setTree(remove_labels(tmp_t,n_buffer.toString(),j_buffer.toString()));
+									questions.add(tmp_q);
+								}
+							} 
+							
+						}	
+					}
+				} 
 			}
 			
 			if(GlobalProperties.getDebug()) System.err.println();
@@ -993,6 +1092,195 @@ public class QuestionTransducer {
 		}
 	}
 
+	private Tree markPossibleReplaceWords(Tree inputTree, ArrayList<String> noun_trees, ArrayList<String> jj_trees) {
+		Tree copyTree = inputTree.deeperCopy();
+		
+		StringBuffer noun_buffer = new StringBuffer();
+		StringBuffer jj_buffer = new StringBuffer();
+		
+		for (Tree leaf : copyTree.getLeaves()) {
+			Tree parent = leaf.parent(copyTree);
+			if (parent.label().toString().startsWith("NN")) {
+				noun_buffer.append(leaf.label().toString() + "|");
+			} else if (parent.label().toString().startsWith("JJ")) {
+				jj_buffer.append(leaf.label().toString() + "|");
+			}
+		}
+		
+		if (noun_buffer.length() > 0) {
+			noun_buffer.deleteCharAt(noun_buffer.length() - 1);
+		} else {
+			noun_buffer.append("-");
+		}
+		
+		if (jj_buffer.length() > 0) {
+			jj_buffer.deleteCharAt(jj_buffer.length() - 1);
+		} else {
+			jj_buffer.append("-");
+		}
+		
+		String tregexOpStr;
+		TregexPattern matchPattern;
+		TregexMatcher matcher;
+
+		//find and mark the possible nouns and adjectives that can be replaced
+		tregexOpStr = "NP < (/NN.*/ <" + noun_buffer + "=noun_replace)";
+		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
+		matcher = matchPattern.matcher(copyTree);
+		
+		int i = 0;
+		while(matcher.find()) {
+			Tree node = matcher.getNode("noun_replace");
+			if (!node.label().toString().contains("-")) {
+				node.label().setValue(node.label().toString() + "-" + i);
+				noun_trees.add(node.label().toString());
+				i++;
+			}
+		}
+		
+		i = 0;
+		tregexOpStr = "/JJ.*/ < "+jj_buffer+"=jj_replace";
+		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
+		matcher = matchPattern.matcher(copyTree);
+		
+		while(matcher.find()) {
+			Tree node = matcher.getNode("jj_replace");
+			if (!node.label().toString().contains("-")) {
+				node.label().setValue(node.label().toString() + "-" + i);
+				jj_trees.add(node.label().toString());
+				i++;
+			}
+		}
+		
+		return copyTree;
+		
+	}
+	
+	private Tree remove_labels(Tree t, String n_pattern, String j_pattern) {
+		Tree copyTree = t.deeperCopy();
+		
+		String tregexOpStr;
+		TregexPattern matchPattern;
+		TregexMatcher matcher;
+		
+		if (!n_pattern.equals("")) {
+			tregexOpStr = "/NN.*/ <" + n_pattern + "=remove";
+			matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
+			matcher = matchPattern.matcher(copyTree);
+			while (matcher.find()) {				
+				Tree node = matcher.getNode("remove");
+				if (node.label().toString().contains("-")) {
+					int index = node.label().toString().indexOf('-');
+					node.label().setValue(node.label().toString().substring(0,index));
+				}
+			}
+		}
+		
+		if (!j_pattern.equals("")) {
+			tregexOpStr = "/JJ.*/ <" + j_pattern + "=remove";
+			matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
+			matcher = matchPattern.matcher(copyTree);
+			while (matcher.find()) {				
+				Tree node = matcher.getNode("remove");
+				if (node.label().toString().contains("-")) {
+					int index = node.label().toString().indexOf('-');
+					node.label().setValue(node.label().toString().substring(0,index));
+				}
+			}
+		}
+		
+		return copyTree;
+		
+	}
+	
+	private ArrayList<Tree> replace_word(int tense, ArrayList<String> words, Tree t) {
+		ArrayList<Tree> ret = new ArrayList<Tree>();
+		
+		for (String word : words) {
+			int index = word.indexOf('-');
+			if (index == -1) {
+				continue;
+			}
+			
+			String w = word.substring(0, index);
+			
+			Tree copyTree = t.deeperCopy();
+			
+			List<String> synlist = new ArrayList<String>();
+			List<String> anlist = new ArrayList<String>();
+
+			String tregexOpStr;
+			TregexPattern matchPattern;
+			TregexMatcher matcher;
+						
+			if (tense == 0) {
+				tregexOpStr = "/NN.*/ <" + word + "=replace";
+				matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
+				matcher = matchPattern.matcher(copyTree);
+				if (matcher.find()) {				
+					synlist = RelatedWords.getInstance().getSynonyms(w, POS.NOUN);
+				}
+				if (!synlist.isEmpty()) {
+					Tree node = matcher.getNode("replace");
+					int pos = 0;
+					for (int k = 0; k < synlist.size(); k++) {
+						if (!synlist.get(k).equals(w)) {
+							pos = k;
+							break;
+						}
+					}
+					if (node != null && !synlist.get(pos).equals(node.label().toString())) {
+						node.label().setValue(synlist.get(pos));
+						ret.add(copyTree);
+					}
+				}
+			} else {
+				tregexOpStr = "/JJ.*/ <" + word + "=replace";
+				matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
+				matcher = matchPattern.matcher(copyTree);
+				if (matcher.find()) {				
+					synlist = RelatedWords.getInstance().getSynonyms(w, POS.ADJECTIVE);
+					anlist = RelatedWords.getInstance().getSynonyms(w, POS.ADJECTIVE);
+				}
+				Tree bcopyTree = copyTree.deeperCopy();
+				
+				if (!synlist.isEmpty()) {
+					Tree node = matcher.getNode("replace");
+					int pos = 0;
+					for (int k = 0; k < synlist.size(); k++) {
+						if (!synlist.get(k).equals(w)) {
+							pos = k;
+							break;
+						}
+					}
+					if (node != null && !synlist.get(pos).equals(node.label().toString())) {
+						node.label().setValue(synlist.get(pos));
+						ret.add(copyTree);
+					}
+				}
+				
+				if (!anlist.isEmpty() && tense == 2) {
+					System.out.println(anlist);
+					matcher = matchPattern.matcher(bcopyTree);
+					Tree node = matcher.getNode("replace");
+					int pos = 0;
+					for (int k = 0; k < anlist.size(); k++) {
+						if (!anlist.get(k).equals(w)) {
+							pos = k;
+							break;
+						}
+					}
+					if (node != null && !anlist.get(pos).equals(node.label().toString())) {
+						node.label().setValue(anlist.get(pos));
+						ret.add(bcopyTree);
+					}
+				}
+			}
+			
+			
+		}
+		return ret;
+	}
 
 	/**
 	 * Marks possible answer phrase nodes with indexes for later processing.
@@ -1246,6 +1534,13 @@ public class QuestionTransducer {
 	private WhPhraseGenerator whGen;
 	private boolean printExtractedPhrases;  //whether or not to print out answer phrases
 	private boolean noAnswerPhraseMarking = false;
+	
+	private boolean replaceWords = true; //whether or not to replace words with synonyms or antonyms
+	private boolean changeNum; //whether or not change numbers to ranges or other numbers
+	
+	private Random rand; 
+	
+	private int num_replace = 1;
 }
 
 
