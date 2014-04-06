@@ -40,11 +40,14 @@ public class RelatedWords {
 	
 	public List<String> getSynonyms(String word, POS pos) {
 		IIndexWord idxWord = dict.getIndexWord(word, pos); 
+		List<String> ret = new ArrayList<String>();
+		if (idxWord == null)
+			return ret;
 		IWordID wordID = idxWord.getWordIDs().get(0); // 1st meaning IWord word = dict.getWord(wordID);
 		IWord tmp = dict.getWord(wordID);
 		ISynset synset = tmp.getSynset();
 		// iterate over words associated with the synset
-		List<String> ret = new ArrayList<String>();
+		
 		for(IWord w : synset.getWords()) {
 			//System.out.println(w.getLemma());
 			ret.add(w.getLemma());
@@ -55,10 +58,13 @@ public class RelatedWords {
 	
 	public List<String> getAntonyms(String word, POS pos) {
 		IIndexWord idxWord = dict.getIndexWord(word, pos); 
+		List<String> ret = new ArrayList<String>();
+		if (idxWord == null)
+			return ret;
+		
 		IWordID wordID = idxWord.getWordIDs().get(0); 
 		IWord tmp = dict.getWord(wordID);
 			
-		List<String> ret = new ArrayList<String>();
 		for (IWordID id : tmp.getRelatedWords(Pointer.HYPERNYM_INSTANCE)) {
 			//System.out.println(dict.getWord(id));
 			ret.add(dict.getWord(id).toString());

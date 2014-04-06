@@ -244,7 +244,7 @@ public class WhPhraseGenerator {
 		//check if there is a quantifying phrase modifying the head noun
 		// "A !>> __" means that A is the top node in the subtree 
 		// "A <<# B means that B is a head of A"
-		tregexOpStr = "NP=top !>> __ <<# (NNS $ QP|CD=quant)";
+		tregexOpStr = "NP=top !>> __ <<# (NNS|NN=object $ QP|CD=quant) !< CC";
 		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
 		matcher = matchPattern.matcher(phraseToMove);
 		
@@ -257,6 +257,13 @@ public class WhPhraseGenerator {
 			List<TsurgeonPattern> ps;
 			Tree copyTree;
 			
+			Tree node = matcher.getNode("object");
+			if (node.label().toString().equals("NN")) {
+				Tree child = node.firstChild();
+				child.label().setValue(Pluraler.makePlural(child.label().toString()));
+				node.label().setValue("NNS");
+			}
+			
 			//remove the quantifier	
 			ps = new ArrayList<TsurgeonPattern>();
 			ops = new ArrayList<Pair<TregexPattern, TsurgeonPattern>>();
@@ -267,7 +274,7 @@ public class WhPhraseGenerator {
 			Tsurgeon.processPatternsOnTree(ops, copyTree);
 			
 			//remove determiners if present to avoid, e.g., "*How many the cars did I buy?")
-			tregexOpStr = "NP=top !>> __ <<# (NNS $ DT=det)";
+			tregexOpStr = "NP=top !>> __ <<# (NNS|NN $ DT=det)";
 			matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
 			matcher = matchPattern.matcher(phraseToMove);
 			if(matcher.find()){
@@ -278,6 +285,8 @@ public class WhPhraseGenerator {
 				ops.add(new Pair<TregexPattern,TsurgeonPattern>(matchPattern,p));
 				Tsurgeon.processPatternsOnTree(ops, copyTree);
 			}
+			
+			
 			
 			//result.add("(WHADJP (WRB how) (JJ many)) (NNS "+sentenceTokens.get(answerNPHeadTokenIdx)+")");
 			whPhraseSubtrees.add("(WHADJP (WRB how) (JJ many)) (NP "+ copyTree.toString() +")");

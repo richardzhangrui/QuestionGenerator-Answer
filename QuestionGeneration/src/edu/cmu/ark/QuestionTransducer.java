@@ -25,6 +25,8 @@
 package edu.cmu.ark;
 
 import edu.mit.jwi.item.POS;
+import edu.stanford.nlp.ling.WordTag;
+import edu.stanford.nlp.process.Morphology;
 import edu.stanford.nlp.trees.*;
 import edu.stanford.nlp.util.*;
 
@@ -157,6 +159,7 @@ public class QuestionTransducer {
 		generateQuestionsFromParse(q);
 	}
 	
+	
 	/**
 	 * The top-level method for converting declarative sentences into
 	 * yes-no and WH questions.
@@ -239,53 +242,10 @@ public class QuestionTransducer {
 					questions.add(tmp2);
 					/* replace with synonyms or antonyms */
 					if (replaceWords) {
-						Question tmp3 = tmp2.deeperCopy();
-						ArrayList<String> noun_trees = new ArrayList<String>();
-						ArrayList<String> jj_trees = new ArrayList<String>();
-						tmp3.setTree(markPossibleReplaceWords(tmp3.getTree(), noun_trees, jj_trees));
-						
-						StringBuffer n_buffer = new StringBuffer();
-						StringBuffer j_buffer = new StringBuffer();
-						for (String s : noun_trees) {
-							n_buffer.append(s + "|");
-						}
-						for (String s : jj_trees) {
-							j_buffer.append(s + "|");
-						}
-						
-						if (n_buffer.length() > 1) {
-							n_buffer.deleteCharAt(n_buffer.length() - 1);
-						}
-						if (j_buffer.length() > 1) {
-							j_buffer.deleteCharAt(j_buffer.length() - 1);
-						}
-						
-						if (!noun_trees.isEmpty() || !jj_trees.isEmpty()) {
-							for (int k = 0; k < num_replace; k++) {
-								
-								if (!noun_trees.isEmpty()) {
-								
-									List<Tree> trees = replace_word(0, noun_trees, tmp3.getTree());
-									//System.out.println(trees);
-									for (Tree tmp_t : trees) {
-										Question tmp_q = tmp3.deeperCopy();
-										tmp_q.setTree(remove_labels(tmp_t,n_buffer.toString(),j_buffer.toString()));
-										questions.add(tmp_q);
-									}
-								} 
-								if (!jj_trees.isEmpty()) {
-									List<Tree> trees = replace_word(2, jj_trees, tmp3.getTree());
-									System.out.println(trees);
-									for (Tree tmp_t : trees) {
-										Question tmp_q = tmp3.deeperCopy();
-										tmp_q.setTree(remove_labels(tmp_t,n_buffer.toString(),j_buffer.toString()));
-										questions.add(tmp_q);
-									}
-								} 
-								
-							}		
-						}
-					} 
+						Question new_q = generate_replace_question(tmp2);
+						if (new_q != null)
+							questions.add(new_q);
+					}
 				}
 				
 				if(GlobalProperties.getDebug()) System.err.println();
@@ -312,60 +272,214 @@ public class QuestionTransducer {
 			}else{
 				questions.add(tmp2);	
 				if (replaceWords) {
-					Question tmp3 = tmp2.deeperCopy();
-					ArrayList<String> noun_trees = new ArrayList<String>();
-					ArrayList<String> jj_trees = new ArrayList<String>();
-					tmp3.setTree(markPossibleReplaceWords(tmp3.getTree(), noun_trees, jj_trees));
-					
-					
-					StringBuffer n_buffer = new StringBuffer();
-					StringBuffer j_buffer = new StringBuffer();
-					for (String s : noun_trees) {
-						n_buffer.append(s + "|");
-					}
-					for (String s : jj_trees) {
-						j_buffer.append(s + "|");
-					}
-					
-					if (n_buffer.length() > 1) {
-						n_buffer.deleteCharAt(n_buffer.length() - 1);
-					}
-					if (j_buffer.length() > 1) {
-						j_buffer.deleteCharAt(j_buffer.length() - 1);
-					}
-					
-					if (!noun_trees.isEmpty() || !jj_trees.isEmpty()) {
-						for (int k = 0; k < num_replace; k++) {
-							
-							if (!noun_trees.isEmpty()) {
-							
-								List<Tree> trees = replace_word(0, noun_trees, tmp3.getTree());
-								for (Tree tmp_t : trees) {
-									Question tmp_q = tmp3.deeperCopy();
-									tmp_q.setTree(remove_labels(tmp_t,n_buffer.toString(),j_buffer.toString()));
-									questions.add(tmp_q);
-								}
-							} 
-							if (!jj_trees.isEmpty()) {
-								List<Tree> trees = replace_word(1, jj_trees, tmp3.getTree());
-								for (Tree tmp_t : trees) {
-									Question tmp_q = tmp3.deeperCopy();
-									tmp_q.setTree(remove_labels(tmp_t,n_buffer.toString(),j_buffer.toString()));
-									questions.add(tmp_q);
-								}
-							} 
-							
-						}	
-					}
-				} 
+					Question new_q = generate_replace_question(tmp2);
+					if (new_q != null)
+						questions.add(new_q);
+				}
+				generate_range_questions(tmp2);
+				tmp2.setTree(markPossibleYear(tmp2.getTree()));
+				generate_range_year_questions(tmp2);
 			}
 			
 			if(GlobalProperties.getDebug()) System.err.println();
+			
 		}
 		
 	}
 	
+	private Question generate_replace_question(Question ori) {
+		Question tmp3 = ori.deeperCopy();
+		ArrayList<String> noun_trees = new ArrayList<String>();
+		ArrayList<String> jj_trees = new ArrayList<String>();
+		tmp3.setTree(markPossibleReplaceWords(tmp3.getTree(), noun_trees, jj_trees));
+		
+		StringBuffer n_buffer = new StringBuffer();
+		StringBuffer j_buffer = new StringBuffer();
+		for (String s : noun_trees) {
+			n_buffer.append(s + "|");
+		}
+		for (String s : jj_trees) {
+			j_buffer.append(s + "|");
+		}
+		
+		if (n_buffer.length() > 1) {
+			n_buffer.deleteCharAt(n_buffer.length() - 1);
+		}
+		if (j_buffer.length() > 1) {
+			j_buffer.deleteCharAt(j_buffer.length() - 1);
+		}
+		
+		if (!noun_trees.isEmpty() || !jj_trees.isEmpty()) {
+			for (int k = 0; k < num_replace; k++) {
+				
+				if (!noun_trees.isEmpty()) {
+				
+					List<Tree> trees = replace_word(0, noun_trees, tmp3.getTree());
+					//System.out.println(trees);
+					for (Tree tmp_t : trees) {
+						Question tmp_q = tmp3.deeperCopy();
+						tmp_q.setTree(remove_labels(tmp_t,n_buffer.toString(),j_buffer.toString()));
+						return tmp_q;
+					}
+				} 
+				if (!jj_trees.isEmpty()) {
+					List<Tree> trees = replace_word(2, jj_trees, tmp3.getTree());
+					//System.out.println(trees);
+					for (Tree tmp_t : trees) {
+						Question tmp_q = tmp3.deeperCopy();
+						tmp_q.setTree(remove_labels(tmp_t,n_buffer.toString(),j_buffer.toString()));
+						return tmp_q;
+					}
+				} 
+				
+			}		
+		}
+		
+		return null;
+	}
+	
+	private Tree replace_num_to_range(Tree tree, int i) {
+		Tree copyTree = tree.deeperCopy();
+		
+		String marker = "CD" + i + "|DQ-" + i;
+		
+		String tregexOpStr;
+		TregexPattern matchPattern;
+		TregexMatcher matcher;
+		
+		tregexOpStr = "NP < " + marker + "=quant < NN|NNS";
+		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
+		matcher = matchPattern.matcher(copyTree);
+		
+		if (matcher.find()) {
+			Tree node = matcher.getNode("quant");
+			Tree child = node.firstChild();
+			String label = child.label().toString();
+			
+			double num = 0;
+			StringBuffer new_label = new StringBuffer();
+			
+			if (rand.nextBoolean()) {
+				new_label.append("more than ");
+			} else {
+				new_label.append("less than ");
+			}
+			
+			if (label.equalsIgnoreCase("a") || label.equalsIgnoreCase("an")) {
+				num = 1;
+			} else {
+				try {
+					num = Double.parseDouble(label);
+					new_label.append(String.valueOf(num + rand.nextInt()));
+				} catch (NumberFormatException e) {
+					new_label.append("thirty-two");
+				}
+			}
+			
+			child.label().setValue(new_label.toString());
+			
+			return copyTree;
+		}
+		
+		return null;
+	}
+	
+	private void generate_range_questions(Question ori) {
+		
+		for (int i = 0; i < candidate_num; i++) {
+			Question tmp = ori.deeperCopy();
+			Tree new_tree = replace_num_to_range(tmp.getTree(), i);
+			if (new_tree != null) {
+				tmp.setTree(new_tree);
+				questions.add(tmp);
+			}
+		}
+		
+	}
 
+	private Tree replace_year_to_range(Tree tree, int i) {
+		Tree copyTree = tree.deeperCopy();
+		
+		String pp_marker = "IN-" + i;
+		String qq_marker = "CD-" + i;
+		
+		String tregexOpStr;
+		TregexPattern matchPattern;
+		TregexMatcher matcher;
+		
+		tregexOpStr = "VP < (/.*PP.*/ < "+pp_marker+"=pp < (/.*NP.*/ <: "+qq_marker+"=quant))";
+		//System.out.println(tregexOpStr);
+		//System.out.println(copyTree);
+		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
+		matcher = matchPattern.matcher(copyTree);
+		
+		if (matcher.find()) {
+			Tree node = matcher.getNode("pp");
+			Tree child = node.firstChild();
+			String label = child.label().toString();
+			
+			double num = 0;
+			StringBuffer new_label = new StringBuffer();
+			
+			boolean flag = false;
+			
+			if (label.equalsIgnoreCase("in")) {
+				if (rand.nextBoolean()) {
+					new_label.append("after");
+				} else {
+					new_label.append("before");
+				}
+			} else if(label.equalsIgnoreCase("before")) {
+				new_label.append("after");
+			} else if (label.equalsIgnoreCase("after")) {
+				new_label.append("before");
+			} else if (label.equalsIgnoreCase("from") || label.equalsIgnoreCase("until") 
+					|| label.equalsIgnoreCase("to")) {
+				new_label.append(label);
+				flag = true;
+			}
+			
+			child.label().setValue(new_label.toString());
+			
+			node = matcher.getNode("quant");
+			child = node.firstChild();
+			label = child.label().toString();
+
+			new_label = new StringBuffer();
+			
+			try {
+				num = Double.parseDouble(label);
+				if (flag) {
+					new_label.append(String.valueOf((int)(num + rand.nextInt()%5)));
+				} else {
+					new_label.append(String.valueOf((int)(num + rand.nextInt()%10)));
+				}
+				
+			} catch (NumberFormatException e) {
+				new_label.append("1985");
+			}
+			
+			child.label().setValue(new_label.toString());
+			
+			return copyTree;
+		}
+		
+		return null;
+	}
+	
+	private void generate_range_year_questions(Question ori) {
+		
+		for (int i = 0; i < year_num; i++) {
+			Question tmp = ori.deeperCopy();
+			Tree new_tree = replace_year_to_range(tmp.getTree(), i);
+			if (new_tree != null) {
+				tmp.setTree(new_tree);
+				questions.add(tmp);
+			}
+		}
+		
+	}
+	
 	private void relabelPunctuationAsQuestionMark(Tree inputTree) {
 		List<Pair<TregexPattern, TsurgeonPattern>> ops = new ArrayList<Pair<TregexPattern, TsurgeonPattern>>();
 		String tregexOpStr;
@@ -629,7 +743,7 @@ public class QuestionTransducer {
 		Tree answerPhrase;
 		String tregexOpStr;
 		TregexPattern matchPattern;
-		String marker = "/^(NP|PP|SBAR)-"+i+"$/";
+		String marker = "/^(NP|PP|SBAR|CD|DT)-"+i+"$/";
 		
 		tregexOpStr = marker+"=answer";
 		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
@@ -1100,7 +1214,7 @@ public class QuestionTransducer {
 		
 		for (Tree leaf : copyTree.getLeaves()) {
 			Tree parent = leaf.parent(copyTree);
-			if (parent.label().toString().startsWith("NN")) {
+			if (parent.label().toString().startsWith("NN") && !parent.label().toString().startsWith("NNP")) {
 				noun_buffer.append(leaf.label().toString() + "|");
 			} else if (parent.label().toString().startsWith("JJ")) {
 				jj_buffer.append(leaf.label().toString() + "|");
@@ -1124,7 +1238,7 @@ public class QuestionTransducer {
 		TregexMatcher matcher;
 
 		//find and mark the possible nouns and adjectives that can be replaced
-		tregexOpStr = "NP < (/NN.*/ <" + noun_buffer + "=noun_replace)";
+		tregexOpStr = "NP < (/NN.*/ <" + noun_buffer + "=noun_replace !< year|years)";
 		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
 		matcher = matchPattern.matcher(copyTree);
 		
@@ -1214,23 +1328,32 @@ public class QuestionTransducer {
 			TregexMatcher matcher;
 						
 			if (tense == 0) {
-				tregexOpStr = "/NN.*/ <" + word + "=replace";
+				tregexOpStr = "/NN.*/=parent < (" + word + "=replace)";
 				matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
 				matcher = matchPattern.matcher(copyTree);
-				if (matcher.find()) {				
+				if (matcher.find()) {
+					WordTag wt = new WordTag(w);
+					w = Morphology.lemmatizeStatic(wt).lemma();
 					synlist = RelatedWords.getInstance().getSynonyms(w, POS.NOUN);
 				}
 				if (!synlist.isEmpty()) {
 					Tree node = matcher.getNode("replace");
 					int pos = 0;
 					for (int k = 0; k < synlist.size(); k++) {
-						if (!synlist.get(k).equals(w)) {
+						if (!synlist.get(k).equalsIgnoreCase(w)) {
 							pos = k;
 							break;
 						}
 					}
-					if (node != null && !synlist.get(pos).equals(node.label().toString())) {
-						node.label().setValue(synlist.get(pos));
+					if (node != null && !synlist.get(pos).equalsIgnoreCase(node.label().toString())) {
+						Tree parent = matcher.getNode("parent");
+						String new_label = synlist.get(pos);
+						
+						if (parent.label().value().equals("NNS")) {
+							//System.out.println(new_label);
+							new_label = Pluraler.makePlural(new_label);
+						}
+						node.label().setValue(new_label);
 						ret.add(copyTree);
 					}
 				}
@@ -1248,29 +1371,29 @@ public class QuestionTransducer {
 					Tree node = matcher.getNode("replace");
 					int pos = 0;
 					for (int k = 0; k < synlist.size(); k++) {
-						if (!synlist.get(k).equals(w)) {
+						if (!synlist.get(k).equalsIgnoreCase(w)) {
 							pos = k;
 							break;
 						}
 					}
-					if (node != null && !synlist.get(pos).equals(node.label().toString())) {
+					if (node != null && !synlist.get(pos).equalsIgnoreCase(node.label().toString())) {
 						node.label().setValue(synlist.get(pos));
 						ret.add(copyTree);
 					}
 				}
 				
 				if (!anlist.isEmpty() && tense == 2) {
-					System.out.println(anlist);
+					//System.out.println(anlist);
 					matcher = matchPattern.matcher(bcopyTree);
 					Tree node = matcher.getNode("replace");
 					int pos = 0;
 					for (int k = 0; k < anlist.size(); k++) {
-						if (!anlist.get(k).equals(w)) {
+						if (!anlist.get(k).equalsIgnoreCase(w)) {
 							pos = k;
 							break;
 						}
 					}
-					if (node != null && !anlist.get(pos).equals(node.label().toString())) {
+					if (node != null && !anlist.get(pos).equalsIgnoreCase(node.label().toString())) {
 						node.label().setValue(anlist.get(pos));
 						ret.add(bcopyTree);
 					}
@@ -1282,6 +1405,32 @@ public class QuestionTransducer {
 		return ret;
 	}
 
+	private Tree markPossibleYear(Tree inputTree) {
+		Tree copyTree = inputTree.deeperCopy();
+
+		String tregexOpStr;
+		TregexPattern matchPattern;
+		TregexMatcher matcher;
+		Tree tmp;
+		
+		//number for year
+		tregexOpStr = "VP < (/PP.*/ < (IN=pp < in|before|after|from|until|to) < (/.*NP.*/ <: CD=quant))";
+		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
+		matcher = matchPattern.matcher(copyTree);
+		while(matcher.find()){
+			System.out.println("found");
+			tmp = matcher.getNode("pp");
+			//System.out.println(tmp);
+			tmp.label().setValue(tmp.label().toString() + "-" + year_num);
+			tmp = matcher.getNode("quant");
+			tmp.label().setValue(tmp.label().toString() + "-" + year_num);
+			year_num++;
+		}
+		
+		return copyTree;
+	}
+	
+	
 	/**
 	 * Marks possible answer phrase nodes with indexes for later processing.
 	 * This step might be easier with the Stanford Parser API's Tree class methods
@@ -1320,7 +1469,20 @@ public class QuestionTransducer {
 			tmp.label().setValue(tmp.label().toString()+"-"+numWHPhrases);
 			numWHPhrases++;
 		}
-
+		
+		//number for how many
+		tregexOpStr = "/.*NP.*/ < (CD|QP=number $++ NNS|NN)";
+		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
+		matcher = matchPattern.matcher(copyTree);
+		//System.out.println(copyTree);
+		while(matcher.find()){
+			//System.out.println("found");
+			tmp = matcher.getNode("number");
+			//System.out.println(tmp);
+			tmp.label().setValue(tmp.label().toString()+"-"+candidate_num);
+			candidate_num++;
+		}
+		
 		if(GlobalProperties.getDebug()) System.err.println("markPossibleAnswerPhrases: "+copyTree.toString());
 		return copyTree;
 	}
@@ -1536,9 +1698,11 @@ public class QuestionTransducer {
 	private boolean noAnswerPhraseMarking = false;
 	
 	private boolean replaceWords = true; //whether or not to replace words with synonyms or antonyms
-	private boolean changeNum; //whether or not change numbers to ranges or other numbers
 	
-	private Random rand; 
+	private int candidate_num = 0; 
+	private int year_num = 0;
+	
+	private Random rand;
 	
 	private int num_replace = 1;
 }
