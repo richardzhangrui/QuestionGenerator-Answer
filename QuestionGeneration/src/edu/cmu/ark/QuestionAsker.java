@@ -29,8 +29,6 @@ import java.io.*;
 //import java.text.NumberFormat;
 import java.util.*;
 
-//import weka.classifiers.functions.LinearRegression;
-
 //import edu.cmu.ark.ranking.WekaLinearRegressionRanker;
 import edu.stanford.nlp.trees.Tree;
 
@@ -81,7 +79,10 @@ public class QuestionAsker {
 		boolean printVerbose = false;
 		String modelPath = null;
 		
-		List<Question> outputQuestionList = new ArrayList<Question>();
+		List<Question> easyOutputQuestionList = new ArrayList<Question>();
+		List<Question> middleOutputQuestionList = new ArrayList<Question>();
+		List<Question> hardOutputQuestionList = new ArrayList<Question>();
+
 		boolean preferWH = false;
 		boolean doNonPronounNPC = false;
 		boolean doPronounNPC = true;
@@ -90,6 +91,8 @@ public class QuestionAsker {
 		boolean avoidFreqWords = false;
 		boolean dropPro = true;
 		boolean justWH = false;
+		Integer nQuestions = 0;
+		
 		
 		for(int i=0;i<args.length;i++){
 			if(args[i].equals("--debug")){
@@ -119,6 +122,9 @@ public class QuestionAsker {
 			}else if(args[i].equals("--max-length")){  
 				maxLength = new Integer(args[i+1]);
 				i++;
+			} else if (args[i].equals("--nQuestions")) {
+				nQuestions = new Integer(args[i+1]);
+				i++;
 			}
 		}
 		
@@ -127,7 +133,7 @@ public class QuestionAsker {
 		trans.setDoNonPronounNPC(doNonPronounNPC);
 		
 		if(modelPath != null){
-			System.err.println("Loading question ranking models from "+modelPath+"...");
+			//System.err.println("Loading question ranking models from "+modelPath+"...");
 			qr = new QuestionRanker();
 			qr.loadModel(modelPath);
 		}
@@ -140,7 +146,9 @@ public class QuestionAsker {
 
 			
 			while(true){
-				outputQuestionList.clear();
+				easyOutputQuestionList.clear();
+				middleOutputQuestionList.clear();
+				hardOutputQuestionList.clear();
 				doc = "";
 				buf = "";
 				
@@ -183,45 +191,102 @@ public class QuestionAsker {
 				//step 1 transformations
 				List<Question> transformationOutput = trans.transform(inputTrees);
 				
+				QuestionTransducer.cause_questions = trans.getSimplifier().cause_questions;
+				
+				//System.out.println("Input");
 				//step 2 question transducer
 				for(Question t: transformationOutput){
 					if(GlobalProperties.getDebug()) System.err.println("Stage 2 Input: "+t.getIntermediateTree().yield().toString());
 					qt.generateQuestionsFromParse(t);
-					outputQuestionList.addAll(qt.getQuestions());
+					easyOutputQuestionList.addAll(qt.getEasyQuestions());
+					middleOutputQuestionList.addAll(qt.getMiddleQuestions());
+					hardOutputQuestionList.addAll(qt.getHardQuestions());
 				}			
 				
 				//remove duplicates
-				QuestionTransducer.removeDuplicateQuestions(outputQuestionList);
+				QuestionTransducer.removeDuplicateQuestions(easyOutputQuestionList);
+				QuestionTransducer.removeDuplicateQuestions(middleOutputQuestionList);
+				QuestionTransducer.removeDuplicateQuestions(hardOutputQuestionList);
+				
+				//System.out.println("Cause");
+				//for (Question q : QuestionTransducer.cause_questions) {
+				//	System.out.println(q.hashCode());
+				//}
+				
+				List<Question> outputList = new ArrayList<Question>();
 				
 				//step 3 ranking
 				if(qr != null){
-					qr.scoreGivenQuestions(outputQuestionList);
+					qr.scoreGivenQuestions(easyOutputQuestionList);
 					boolean doStemming = true;
-					QuestionRanker.adjustScores(outputQuestionList, inputTrees, avoidFreqWords, preferWH, downweightPronouns, doStemming);
-					QuestionRanker.sortQuestions(outputQuestionList, false);
+					QuestionRanker.adjustScores(easyOutputQuestionList, inputTrees, avoidFreqWords, preferWH, downweightPronouns, doStemming, false);
+					QuestionRanker.sortQuestions(easyOutputQuestionList, false);
+					
+					int i = 0;
+					while (i < nQuestions/3 && i < easyOutputQuestionList.size()) {
+						if (easyOutputQuestionList.get(i).getTree().getLeaves().size() > maxLength) {
+							continue;
+						}
+						
+						outputList.add(easyOutputQuestionList.get(i));
+						i++;
+					}
+					
+					qr.scoreGivenQuestions(middleOutputQuestionList);
+					QuestionRanker.adjustScores(middleOutputQuestionList, inputTrees, avoidFreqWords, preferWH, downweightPronouns, doStemming, false);
+					QuestionRanker.sortQuestions(middleOutputQuestionList, false);
+					
+					int j = 0;
+					while (j < nQuestions/3 && j < middleOutputQuestionList.size()) {
+						if (middleOutputQuestionList.get(j).getTree().getLeaves().size() > maxLength) {
+							continue;
+						}
+						
+						outputList.add(middleOutputQuestionList.get(j));
+						j++;
+					}
+					
+					qr.scoreGivenQuestions(hardOutputQuestionList);
+					QuestionRanker.adjustScores(hardOutputQuestionList, inputTrees, avoidFreqWords, preferWH, downweightPronouns, doStemming, true);
+					QuestionRanker.sortQuestions(hardOutputQuestionList, false);
+					
+					int k = 0;
+					while (k < nQuestions - 2*nQuestions/3 && k < hardOutputQuestionList.size()) {
+						if (hardOutputQuestionList.get(k).getTree().getLeaves().size() > maxLength) {
+							continue;
+						}
+						
+						outputList.add(hardOutputQuestionList.get(k));
+						k++;
+					}
+
+				}
+				
+				for (Question question : outputList) {
+					System.out.println(question.yield());
 				}
 				
 				//now print the questions
 				//double featureValue;
-				for(Question question: outputQuestionList){
-					if(question.getTree().getLeaves().size() > maxLength){
-						continue;
-					}
-					if(justWH && question.getFeatureValue("whQuestion") != 1.0){
-						continue;
-					}
-					System.out.print(question.yield());
-					if(printVerbose) System.out.print("\t"+AnalysisUtilities.getCleanedUpYield(question.getSourceTree()));
-					Tree ansTree = question.getAnswerPhraseTree();
-					if(printVerbose) System.out.print("\t");
-					if(ansTree != null){
-						if(printVerbose) System.out.print(AnalysisUtilities.getCleanedUpYield(question.getAnswerPhraseTree()));
-					}
-					if(printVerbose) System.out.print("\t"+question.getScore());
-					//System.err.println("Answer depth: "+question.getFeatureValue("answerDepth"));
-					
-					System.out.println();
-				}
+//				for(Question question: outputQuestionList){
+//					if(question.getTree().getLeaves().size() > maxLength){
+//						continue;
+//					}
+//					if(justWH && question.getFeatureValue("whQuestion") != 1.0){
+//						continue;
+//					}
+//					System.out.print(question.yield());
+//					if(printVerbose) System.out.print("\t"+AnalysisUtilities.getCleanedUpYield(question.getSourceTree()));
+//					Tree ansTree = question.getAnswerPhraseTree();
+//					if(printVerbose) System.out.print("\t");
+//					if(ansTree != null){
+//						if(printVerbose) System.out.print(AnalysisUtilities.getCleanedUpYield(question.getAnswerPhraseTree()));
+//					}
+//					if(printVerbose) System.out.print("\t"+question.getScore());
+//					//System.err.println("Answer depth: "+question.getFeatureValue("answerDepth"));
+//					
+//					System.out.println();
+//				}
 			
 				if(GlobalProperties.getDebug()) System.err.println("Seconds Elapsed Total:\t"+((System.currentTimeMillis()-startTime)/1000.0));
 				//prompt for another piece of input text 

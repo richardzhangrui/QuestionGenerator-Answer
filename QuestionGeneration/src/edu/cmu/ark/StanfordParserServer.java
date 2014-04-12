@@ -71,7 +71,7 @@ public class StanfordParserServer  {
 			System.exit(0);
 		}
 		lp.setMaxLength(maxLength);
-		lp.setOptionFlags("-outputFormat", "oneline");
+		lp.setOptionFlags("-outputFormat", "oneline", "-MAX_ITEMS", "700000");
 		
 		// declare a server socket and a client socket for the server
 		// declare an input and an output stream
@@ -80,6 +80,8 @@ public class StanfordParserServer  {
 		PrintWriter outputWriter;
 		Socket clientSocket = null;
 		try {
+            //InetAddress addr = InetAddress.getByName("localhost");
+			//parseServer = new ServerSocket(port, 5, addr);
 			parseServer = new ServerSocket(port);
 		}
 		catch (IOException e) {

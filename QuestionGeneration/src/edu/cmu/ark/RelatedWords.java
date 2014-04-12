@@ -20,7 +20,8 @@ public class RelatedWords {
 		if (dict == null) {
 			URL url;
 			try {
-				url = new URL("file" ,null ,"/Users/richard/HW/11611/project/WordNet-3.0/dict");
+                String str = (String)GlobalProperties.getProperties().get("wordnet");
+				url = new URL("file" ,null , str);
 				dict = new Dictionary(url);
 				dict.open();
 			} catch (MalformedURLException e) {

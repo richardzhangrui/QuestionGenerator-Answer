@@ -56,6 +56,18 @@ import edu.stanford.nlp.util.Pair;
 public class SentenceSimplifier {
 	public SentenceSimplifier(){
 		factory = new LabeledScoredTreeFactory();
+		cause_questions = new ArrayList<Question>();
+		cause_dict = new HashSet<String>();
+		res_dict = new HashSet<String>();
+		
+		cause_dict.add("because");
+		cause_dict.add("thanks");
+		cause_dict.add("due");
+		cause_dict.add("owning");
+		
+		res_dict.add("so");
+		res_dict.add("thus");
+		res_dict.add("therefore");
 	}
 	
 	
@@ -79,12 +91,12 @@ public class SentenceSimplifier {
 		{
 			addIfNovel(treeCollection, input);
 		}else{
-			
+
 			List<Question> extracted = new ArrayList<Question>();
 			//if there is a conjunction of NPs within this small chunk, also extract separate sentences using each conjunct NP.
 			if(breakNPs) extractConjoinedNPs(extracted, input);
 			extractConjoinedPhrases(extracted, input);
-	
+			//System.out.println(input);
 			for(Question e: extracted){
 				//recur
 				addAllIfNovel(treeCollection, simplifyHelper(e));
@@ -189,13 +201,13 @@ public class SentenceSimplifier {
 	
 
 	
-	private void removeNestedElements(Question input) {		
+	private void removeNestedElements(Question input) {	
 		removeAppositives(input);
 		removeVerbalModifiersAfterCommas(input);
 		removeClauseLevelModifiers(input);
 		removeNonRestrRelClausesAndParticipials(input);
 		removeParentheticals(input);
-		
+
 		if(GlobalProperties.getComputeFeatures()) input.setFeatureValue("removedNestedElements", 1.0); //old feature name
 	}
 
@@ -582,12 +594,24 @@ public class SentenceSimplifier {
 
 		boolean modified = false;
 		
+		//System.out.println(q.getIntermediateTree().toString());
+		
 		//remove subordinate clauses and various phrases
 		//leave conditional antecedents (i.e., with "if" or "unless" as complementizers.  punt on "even if")
 		tregexOpStr = "ROOT=root < (S=mainclause < (/SBAR|ADVP|ADJP|CC|PP|S|NP/=fronted !< (IN < if|unless) !$ ``  $++ NP=subject))";
 		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
 		TregexMatcher matcher = matchPattern.matcher(q.getIntermediateTree());
 		if(matcher.find()){
+			//System.out.println("found2:" + q.getIntermediateTree().toString());
+
+			Tree tmp_node = matcher.getNode("fronted");
+			boolean flag = false;
+			if (tmp_node != null) {
+				System.out.println("First one: " + tmp_node.yield().get(0).toString());
+				flag = (cause_dict.contains(tmp_node.yield().get(0).toString()) ||
+						res_dict.contains(tmp_node.yield().get(0).toString()));
+			}
+			
 			ops = new ArrayList<Pair<TregexPattern, TsurgeonPattern>>();		
 			ps = new ArrayList<TsurgeonPattern>();
 			tregexOpStr = "ROOT=root < (S=mainclause < (/[,:]/=comma $ (/SBAR|ADVP|ADJP|CC|PP|S|NP/=fronted !< (IN < if|unless) $++ NP=subject)))";
@@ -597,6 +621,23 @@ public class SentenceSimplifier {
 			ops.add(new Pair<TregexPattern,TsurgeonPattern>(matchPattern,p));
 			Tsurgeon.processPatternsOnTree(ops, q.getIntermediateTree());
 
+			if (!flag) {
+				tmp_node = matcher.getNode("subject");
+				Tree tmp_parent = tmp_node.parent(q.getIntermediateTree());
+				for (int i = 0; i < tmp_parent.children().length - 1; i++) {
+					Tree first = tmp_parent.children()[i];
+					Tree second = tmp_parent.children()[i + 1];
+					if (first != null && second != null && second == tmp_node) {
+						tmp_node = first;
+						break;
+					}
+				}
+				if (tmp_node != null) {
+					System.out.println("First one: " + tmp_node.yield().get(0).toString());
+					flag = res_dict.contains(tmp_node.yield().get(0).toString());
+				}
+			}
+			
 			ops = new ArrayList<Pair<TregexPattern, TsurgeonPattern>>();		
 			ps = new ArrayList<TsurgeonPattern>();
 			tregexOpStr = "ROOT=root < (S=mainclause < (/SBAR|ADVP|ADJP|CC|PP|S|NP/=fronted !< (IN < if|unless) $++ NP=subject))";
@@ -609,6 +650,12 @@ public class SentenceSimplifier {
 			addQuotationMarksIfNeeded(q.getIntermediateTree());
 			if(GlobalProperties.getComputeFeatures()) q.setFeatureValue("removedClauseLevelModifiers", 1.0);
 			modified = true;
+			
+			
+			if (flag) {
+				cause_questions.add(q);
+			}
+			
 		}
 		
 		return modified;
@@ -633,10 +680,19 @@ public class SentenceSimplifier {
 
 		tregexOpStr = "ROOT=root << (VP !< VP < (/,/=comma $+ /[^`].*/=modifier))";
 		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
-		
+		TregexMatcher matcher = matchPattern.matcher(q.getIntermediateTree());
 		//remove modifiers
 		ps = new ArrayList<TsurgeonPattern>();
-		if(matchPattern.matcher(q.getIntermediateTree()).find()){
+		if(matcher.find()){
+			boolean flag = false;
+			//System.out.println("found7:" + q.getIntermediateTree().toString());
+
+			Tree tmp_node = matcher.getNode("modifier");
+			if (tmp_node != null) {
+				System.out.println("First one: " + tmp_node.yield().get(0).toString());
+				flag = cause_dict.contains(tmp_node.yield().get(0).toString());
+			}
+			
 			ps.add(Tsurgeon.parseOperation("prune modifier"));
 			p = Tsurgeon.collectOperations(ps);
 			ops.add(new Pair<TregexPattern,TsurgeonPattern>(matchPattern,p));
@@ -652,7 +708,11 @@ public class SentenceSimplifier {
 			ops.add(new Pair<TregexPattern,TsurgeonPattern>(matchPattern,p));
 			Tsurgeon.processPatternsOnTree(ops, q.getIntermediateTree());
 			addQuotationMarksIfNeeded(q.getIntermediateTree());
-
+			
+			if (flag) {
+				cause_questions.add(q);
+			}
+			
 			if(GlobalProperties.getComputeFeatures()) q.setFeatureValue("removedVerbalModifiersAfterCommas", 1.0);
 			return true;
 		}else{
@@ -728,7 +788,7 @@ public class SentenceSimplifier {
 		TregexPattern matchPattern;
 		TregexMatcher matcher;
 
-		tregexOpStr = " SBAR [ > VP < IN | > S|SINV ]  " + //not a complement
+		tregexOpStr = " SBAR=sbar [ > VP < IN | > S|SINV ]  " + //not a complement
 			" !< (IN < if|unless|that)" + //not a conditional antecedent
 			" < (S=sub !< (VP < VBG)) "+//+ //not a participial phrase
 			" >S|SINV|VP "; //not part of a noun phrase or PP (other methods for those)
@@ -736,6 +796,22 @@ public class SentenceSimplifier {
 		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
 		matcher = matchPattern.matcher(input.getIntermediateTree());
 		while(matcher.find()){
+			Tree tmp_parent = matcher.getNode("sbar");
+			Tree tmp_node = matcher.getNode("sub");
+			for (int i = 0; i < tmp_parent.children().length - 1; i++) {
+				Tree first = tmp_parent.children()[i];
+				Tree second = tmp_parent.children()[i + 1];
+				if (first != null && second != null && second == tmp_node) {
+					tmp_node = first;
+					break;
+				}
+			}
+			boolean flag = false;
+			if (tmp_node != null) {
+				System.out.println("First one: " + tmp_node.yield().get(0).toString());
+				flag = res_dict.contains(tmp_node.yield().get(0).toString());
+			}			
+			
 			Tree newTree = factory.newTreeNode("ROOT", new ArrayList<Tree>());
 			subord = matcher.getNode("sub");
 			newTree.addChild(subord.deeperCopy());
@@ -748,6 +824,11 @@ public class SentenceSimplifier {
 			if(GlobalProperties.getComputeFeatures()) newTreeWithFeatures.setFeatureValue("extractedFromSubordinateClause", 1.0);
 			if(GlobalProperties.getDebug()) System.err.println("extractSubordinateClauses: "+newTree.toString());
 			addIfNovel(extracted, newTreeWithFeatures);
+			
+			if (flag) {
+				cause_questions.add(newTreeWithFeatures);
+			}
+			
 		}
 	}
 
@@ -1032,7 +1113,7 @@ public class SentenceSimplifier {
 		Tree subj = null;
 
 		tregexOpStr = "ROOT < (S|SINV=mainclause < (NP|SBAR=subj !$++ /,/) < VP=mainvp "
-			+ " [ < (PP=modifier < NP) " //must be a PP with an NP object
+			+ " [ < ((PP=modifier !<< due|because|thanks|owning) < NP) " //must be a PP with an NP object
 			+ "| < (S=modifier < SBAR|NP <<# VB|VBD|VBP|VBZ) ] ) "; //OR: a quote, which is an S clause with a subject and finite main verb
 		//the modifiers to move must be immediately followed by commas
 		
@@ -1212,6 +1293,8 @@ public class SentenceSimplifier {
 		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
 		boolean modified = false;
 		if(matchPattern.matcher(q.getIntermediateTree()).find()){
+			//System.out.println("found3:" + q.getIntermediateTree().toString());
+
 			ps.add(Tsurgeon.parseOperation("prune punc"));
 			ps.add(Tsurgeon.parseOperation("prune mod"));
 			p = Tsurgeon.collectOperations(ps);
@@ -1225,6 +1308,7 @@ public class SentenceSimplifier {
 		tregexOpStr = "NP < (VP|SBAR=mod $- /,/=punc $+ /,/=punc2 !$ CC|CONJP)";
 		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
 		if(matchPattern.matcher(q.getIntermediateTree()).find()){
+			//System.out.println("found4:" + q.getIntermediateTree().toString());
 			ps.add(Tsurgeon.parseOperation("prune punc"));
 			ps.add(Tsurgeon.parseOperation("prune mod"));
 			ps.add(Tsurgeon.parseOperation("prune punc2"));
@@ -1259,6 +1343,8 @@ public class SentenceSimplifier {
 				" | $+ (/:/=leadingpunc < --) $- (/:/=trailingpunc < /--/) ]";
 		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
 		if(matchPattern.matcher(q.getIntermediateTree()).find()){
+			//System.out.println("found5:" + q.getIntermediateTree().toString());
+
 			ps.add(Tsurgeon.parseOperation("prune leadingpunc"));
 			ps.add(Tsurgeon.parseOperation("prune parenthetical"));
 			ps.add(Tsurgeon.parseOperation("prune trailingpunc"));
@@ -1275,6 +1361,8 @@ public class SentenceSimplifier {
 		tregexOpStr = "PRN=parenthetical";
 		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
 		if(matchPattern.matcher(q.getIntermediateTree()).find()){
+			//System.out.println("found6:" + q.getIntermediateTree().toString());
+
 			ps.add(Tsurgeon.parseOperation("prune parenthetical"));
 			p = Tsurgeon.collectOperations(ps);
 			ops.add(new Pair<TregexPattern,TsurgeonPattern>(matchPattern,p));
@@ -1312,12 +1400,12 @@ public class SentenceSimplifier {
 		TregexPattern matchPattern;
 		TsurgeonPattern p;
 		List<TsurgeonPattern> ps;
-
 		ps = new ArrayList<TsurgeonPattern>();
 		tregexOpStr = "NP=parent < (NP=child $++ (/,/ $++ NP|PP=appositive) !$-- /,/) !< CC|CONJP";
 		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
 		if(matchPattern.matcher(q.getIntermediateTree()).find()){
-		
+			//System.out.println("found1:" + q.getIntermediateTree().toString());
+
 			ps.add(Tsurgeon.parseOperation("move child $+ parent"));
 			ps.add(Tsurgeon.parseOperation("prune parent"));
 			p = Tsurgeon.collectOperations(ps);
@@ -1544,6 +1632,10 @@ public class SentenceSimplifier {
 	private TreeFactory factory;
 	private Set<String> verbsThatImplyComplements = null; //not yet fully implemented, can be ignored
 	
+	public ArrayList<Question> cause_questions = null;
+	private HashSet<String> cause_dict = null;
+	
+	private HashSet<String> res_dict = null;
 }
 
 

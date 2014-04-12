@@ -249,7 +249,7 @@ public class AnalysisUtilities {
 		//System.err.println(sentence);
 		//see if a parser socket server is available
         int port = new Integer(GlobalProperties.getProperties().getProperty("parserServerPort","5556"));
-        String host = "127.0.0.1";
+        String host = "localhost";
         Socket client;
         PrintWriter pw;
         BufferedReader br;
@@ -296,7 +296,7 @@ public class AnalysisUtilities {
 			//ex.printStackTrace();
 		}
         
-		System.err.println("parsing:"+sentence);
+		//System.err.println("parsing:"+sentence);
 		
 		//if socket server not available, then use a local parser object
 		if(parser == null){

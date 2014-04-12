@@ -168,7 +168,9 @@ public class QuestionTransducer {
 	 */
 	public void generateQuestionsFromParse(Question inputQuestion){
 		//initialize the array used to store the output questions
-		questions = new ArrayList<Question>();
+		easy_qs = new ArrayList<Question>();
+		middle_qs = new ArrayList<Question>();
+		hard_qs = new ArrayList<Question>();
 		
 		//check if this is a sentence we want to create questions from.
 		//E.g., avoid blank sentences, fragments, and sentences that are already questions
@@ -218,7 +220,7 @@ public class QuestionTransducer {
 				if(GlobalProperties.getComputeFeatures()) tmp2.setFeatureValue("whQuestion", 1.0);
 			}
 			tmp2.setTree(relabelMainClause(tmp2.getTree()));
-
+			
 			//Now generate questions by analyzing the answer phrase and choosing possible
 			//question words (e.g., what, who) from it.
 			//Then, remove the answer phrase and put the question phrase at 
@@ -239,13 +241,16 @@ public class QuestionTransducer {
 				if(avoidPronounsAndDemonstratives && (containsUnresolvedPronounsOrDemonstratives(tmp2))){
 					if(GlobalProperties.getDebug()) System.err.println("generateQuestionsFromParse: skipping due to pronouns");
 				}else{
-					questions.add(tmp2);
+					middle_qs.add(tmp2);
 					/* replace with synonyms or antonyms */
 					if (replaceWords) {
 						Question new_q = generate_replace_question(tmp2);
-						if (new_q != null)
-							questions.add(new_q);
+						if (new_q != null) {
+							new_q.setDifficulty(num_replace);
+							hard_qs.add(new_q);
+						}
 					}
+					
 				}
 				
 				if(GlobalProperties.getDebug()) System.err.println();
@@ -270,15 +275,29 @@ public class QuestionTransducer {
 			if(avoidPronounsAndDemonstratives && containsUnresolvedPronounsOrDemonstratives(tmp2)){
 				if(GlobalProperties.getDebug()) System.err.println("generateQuestionsFromParse: skipping due to pronouns");
 			}else{
-				questions.add(tmp2);	
+				easy_qs.add(tmp2);	
 				if (replaceWords) {
 					Question new_q = generate_replace_question(tmp2);
-					if (new_q != null)
-						questions.add(new_q);
+					if (new_q != null) {
+						new_q.setDifficulty(num_replace);
+						hard_qs.add(new_q);
+					}
+					
 				}
 				generate_range_questions(tmp2);
 				tmp2.setTree(markPossibleYear(tmp2.getTree()));
 				generate_range_year_questions(tmp2);
+				// generate why question
+				if (cause_questions != null && cause_questions.contains(inputQuestion)) {
+					Question tmp3 = tmp2.deeperCopy();
+					Tree node = tmp3.getTree().getLeaves().get(0);
+					if (node != null) {
+						node.label().setValue("Why " +node.label().toString().toLowerCase());
+					}
+					tmp3.setDifficulty(why_diff);
+					if(GlobalProperties.getComputeFeatures()) tmp3.setFeatureValue("whQuestion", 1.0);
+					hard_qs.add(tmp3);
+				}
 			}
 			
 			if(GlobalProperties.getDebug()) System.err.println();
@@ -391,7 +410,8 @@ public class QuestionTransducer {
 			Tree new_tree = replace_num_to_range(tmp.getTree(), i);
 			if (new_tree != null) {
 				tmp.setTree(new_tree);
-				questions.add(tmp);
+				tmp.setDifficulty(range_diff);
+				hard_qs.add(tmp);
 			}
 		}
 		
@@ -474,7 +494,8 @@ public class QuestionTransducer {
 			Tree new_tree = replace_year_to_range(tmp.getTree(), i);
 			if (new_tree != null) {
 				tmp.setTree(new_tree);
-				questions.add(tmp);
+				tmp.setDifficulty(range_diff);
+				hard_qs.add(tmp);
 			}
 		}
 		
@@ -1214,6 +1235,9 @@ public class QuestionTransducer {
 		
 		for (Tree leaf : copyTree.getLeaves()) {
 			Tree parent = leaf.parent(copyTree);
+            if (Character.isDigit(leaf.label().toString().charAt(0)) || leaf.label().toString().contains("%")) {
+                continue;
+            }
 			if (parent.label().toString().startsWith("NN") && !parent.label().toString().startsWith("NNP")) {
 				noun_buffer.append(leaf.label().toString() + "|");
 			} else if (parent.label().toString().startsWith("JJ")) {
@@ -1245,7 +1269,7 @@ public class QuestionTransducer {
 		int i = 0;
 		while(matcher.find()) {
 			Tree node = matcher.getNode("noun_replace");
-			if (!node.label().toString().contains("-")) {
+			if (!node.label().toString().contains("-") && !Character.isDigit(node.label().toString().charAt(0))) {
 				node.label().setValue(node.label().toString() + "-" + i);
 				noun_trees.add(node.label().toString());
 				i++;
@@ -1330,6 +1354,7 @@ public class QuestionTransducer {
 			if (tense == 0) {
 				tregexOpStr = "/NN.*/=parent < (" + word + "=replace)";
 				matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
+                //System.out.println(tregexOpStr);
 				matcher = matchPattern.matcher(copyTree);
 				if (matcher.find()) {
 					WordTag wt = new WordTag(w);
@@ -1418,7 +1443,7 @@ public class QuestionTransducer {
 		matchPattern = TregexPatternFactory.getPattern(tregexOpStr);
 		matcher = matchPattern.matcher(copyTree);
 		while(matcher.find()){
-			System.out.println("found");
+			//System.out.println("found");
 			tmp = matcher.getNode("pp");
 			//System.out.println(tmp);
 			tmp.label().setValue(tmp.label().toString() + "-" + year_num);
@@ -1567,8 +1592,16 @@ public class QuestionTransducer {
 	}
 
 
-	public List<Question> getQuestions() {
-		return questions;
+	public List<Question> getEasyQuestions() {
+		return easy_qs;
+	}
+	
+	public List<Question> getMiddleQuestions() {
+		return middle_qs;
+	}
+	
+	public List<Question> getHardQuestions() {
+		return hard_qs;
 	}
 
 
@@ -1658,7 +1691,7 @@ public class QuestionTransducer {
 				for(Question q: inputTrees){
 					try{
 						qt.generateQuestionsFromParse(q);
-						questions = qt.getQuestions();
+						questions = qt.getEasyQuestions();
 						QuestionTransducer.removeDuplicateQuestions(questions);
 
 						//iterate over the questions for each tree
@@ -1691,8 +1724,12 @@ public class QuestionTransducer {
 	int numWHPhrases;  //the number of possible answer phrases identified in the source sentence.
 
 	private boolean avoidPronounsAndDemonstratives;  //don't produce questions with pronouns
-	private List<Question> questions;  //output questions, co-indexed with sourceTrees and featureValueLists
+	
+	private List<Question> easy_qs; //easy questions;
+	private List<Question> middle_qs; //middle questions;
+	private List<Question> hard_qs; //hard questions;
 
+	
 	private WhPhraseGenerator whGen;
 	private boolean printExtractedPhrases;  //whether or not to print out answer phrases
 	private boolean noAnswerPhraseMarking = false;
@@ -1704,7 +1741,13 @@ public class QuestionTransducer {
 	
 	private Random rand;
 	
+	private static double range_diff = 3.0;
+	private static double why_diff = 2.0;
+	
 	private int num_replace = 1;
+	
+	public static ArrayList<Question> cause_questions = null;
+
 }
 
 

@@ -330,7 +330,7 @@ public class QuestionRanker implements Serializable{
 	
 	
 	public static void adjustScores(List<Question> questions, List<Tree> parsedSentences, boolean avoidFreqWords,
-			boolean preferWH, boolean downweightPronouns, boolean doStemming)
+			boolean preferWH, boolean downweightPronouns, boolean doStemming, boolean isHard)
 	{
 
 		if(avoidFreqWords){
@@ -378,6 +378,12 @@ public class QuestionRanker implements Serializable{
 				
 			}
 			
+		}
+		
+		if (isHard) {
+			for (Question q : questions) {
+				q.setScore((q.getScore() + q.getDifficulty()));
+			}
 		}
 			
 	}

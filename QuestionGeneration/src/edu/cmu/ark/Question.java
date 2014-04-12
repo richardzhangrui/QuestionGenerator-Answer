@@ -396,6 +396,14 @@ public class Question implements Comparable<Question>, Serializable{
 		return intermediateTreeSupersenses;
 	}
 
+	public double getDifficulty() {
+		return difficulty;
+	}
+	
+	public void setDifficulty(double d) {
+		difficulty = d;
+	}
+	
 	private double score; //assigned by QuestionRanker
 	private double labelScore; //gold-standard label, used only during eval
 	private List<Double> featureValueList;
@@ -413,7 +421,10 @@ public class Question implements Comparable<Question>, Serializable{
     private Object sourceDocument; //generic pointer to a document object (generic in order to avoid unneeded dependencies)
     private String sourceArticleName;
 
+	private double difficulty; //For hard questions
+    
 	private static final long serialVersionUID = -1033671431880363286L;
-
+	
+	public ArrayList<Question> cause_question = null;
 
 }
